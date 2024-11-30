@@ -23,6 +23,7 @@ void HandleGet(string recvd_data, int client_fd) {
       string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
                        + to_string(return_string.size()) + "\r\n\r\n" + return_string;
       ssize_t bytes_sent = 0;
+      //incase echo contains some enormous value.
       while (bytes_sent < response.size()) {
           ssize_t sent_now = send(client_fd, response.c_str() + bytes_sent, response.size() - bytes_sent, 0);
           if (sent_now < 0) {
@@ -31,6 +32,18 @@ void HandleGet(string recvd_data, int client_fd) {
           }
           bytes_sent += sent_now;
       }
+    } else if(recvd_data.find("GET /user-agent HTTP") != string::npos) {
+      // HTTP added to avoid responding to /user-agentUser-Agent:
+      string target = "User-Agent:";
+      if(recvd_data.find(target) == string :: npos) {
+        send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
+      }
+      int idx = recvd_data.find(target) + target.size() + 1;
+      string return_string = "";
+      while(recvd_data[idx]!='\r') return_string.push_back(recvd_data[idx++]);
+      string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                       + to_string(return_string.size()) + "\r\n\r\n" + return_string;
+      send(client_fd, response.c_str(), response.size(), 0);
     } else {
       send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
     }
