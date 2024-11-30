@@ -7,12 +7,14 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
 using namespace std; 
 #define MAXBUFFER 1024
 
 string ack = "HTTP/1.1 200 OK\r\n\r\n";
 string nack_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
 string nack_bad_request = "HTTP/1.1 400 Bad Request\r\n\r\n";
+
 void HandleGet(string recvd_data, int client_fd) {
     if(recvd_data.find("GET / HTTP") != string::npos) {
       send(client_fd, ack.c_str(), ack.size(),0);
@@ -47,6 +49,23 @@ void HandleGet(string recvd_data, int client_fd) {
     } else {
       send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
     }
+}
+void HandleConnection(int client_fd) {
+    char recv_buf[MAXBUFFER];
+    ssize_t bytes_recvd = recv(client_fd, recv_buf, MAXBUFFER, 0);
+    if(bytes_recvd > 0) {
+      string recvd_data(recv_buf, bytes_recvd);
+      cout<<"CLIENT_"<<client_fd<<" REQUEST : "<<endl;
+      cout<<recvd_data<<endl;
+      if(recvd_data.find("GET") != string::npos) {
+        HandleGet(recvd_data, client_fd);
+      } else {
+        send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
+      }
+    } else {
+      cerr<<"No Data recvd from client"<<endl;
+    }
+    close(client_fd);
 }
 int main(int argc, char **argv) {
   // Flush after every cout / cerr
@@ -93,23 +112,16 @@ int main(int argc, char **argv) {
   
   cout << "Waiting for a client to connect...\n";
   
-  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  cout << "Client connected\n";
-
-  char recv_buf[MAXBUFFER];
-  ssize_t bytes_recvd = recv(client_fd, recv_buf, MAXBUFFER, 0);
-  if(bytes_recvd > 0) {
-    string recvd_data(recv_buf, bytes_recvd);
-    cout<<"REQUEST : "<<endl;
-    cout<<recvd_data<<endl;
-    if(recvd_data.find("GET") != string::npos) {
-      HandleGet(recvd_data, client_fd);
-    } else {
-      send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
-    }
-
-  } else {
-    cerr<<"No Data recvd from client"<<endl;
+  
+  while(1) {
+    int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+    if (client_fd < 0) {
+          cerr << "Client Connect Attempt Failed\n";
+          continue;  // Go back to listening
+      }
+    cout << "CLIENT_"<<client_fd<<" CONNECTED"<<endl;
+    thread client_thread(HandleConnection, client_fd);
+    client_thread.detach();
   }
   close(server_fd);
 
