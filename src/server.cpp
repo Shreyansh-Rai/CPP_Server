@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <thread>
+#include "ThreadPool.h"
 using namespace std; 
 #define MAXBUFFER 1024
 
@@ -112,7 +113,9 @@ int main(int argc, char **argv) {
   
   cout << "Waiting for a client to connect...\n";
   
-  
+  //Creating a Thread Pool 
+  ThreadPool threadPool(8);
+
   while(1) {
     int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
     if (client_fd < 0) {
@@ -120,8 +123,7 @@ int main(int argc, char **argv) {
           continue;  // Go back to listening
       }
     cout << "CLIENT_"<<client_fd<<" CONNECTED"<<endl;
-    thread client_thread(HandleConnection, client_fd);
-    client_thread.detach();
+    threadPool.ExecuteTask(HandleConnection, client_fd);
   }
   close(server_fd);
 

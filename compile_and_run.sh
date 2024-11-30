@@ -1,0 +1,1 @@
+g++ ./src/server.cpp ./src/ThreadPool.cpp -o server_with_threadpool && ./server_with_threadpool
