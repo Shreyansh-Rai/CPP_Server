@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 using namespace std; 
+#define MAXBUFFER 1024
 int main(int argc, char **argv) {
   // Flush after every cout / cerr
   cout << unitbuf;
@@ -53,12 +54,25 @@ int main(int argc, char **argv) {
   
   cout << "Waiting for a client to connect...\n";
   
-  int connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
   cout << "Client connected\n";
-  
+
   string ack = "HTTP/1.1 200 OK\r\n\r\n";
-  cout<<"sending ack"<<endl;
-  send(connection, ack.c_str(), ack.size(), 0);
+  string nack_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+  char recv_buf[MAXBUFFER];
+  ssize_t bytes_recvd = recv(client_fd, recv_buf, MAXBUFFER, 0);
+  if(bytes_recvd > 0) {
+    string recvd_data(recv_buf, bytes_recvd);
+    cout<<recvd_data<<endl;
+    if(recvd_data.find("GET / HTTP") != string::npos) {
+      send(client_fd, ack.c_str(), ack.size(),0);
+    } else {
+      send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
+    }
+  } else {
+    cerr<<"No Data recvd from client"<<endl;
+  }
   close(server_fd);
 
   return 0;
