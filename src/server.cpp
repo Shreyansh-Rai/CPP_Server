@@ -9,6 +9,32 @@
 #include <netdb.h>
 using namespace std; 
 #define MAXBUFFER 1024
+
+string ack = "HTTP/1.1 200 OK\r\n\r\n";
+string nack_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
+string nack_bad_request = "HTTP/1.1 400 Bad Request\r\n\r\n";
+void HandleGet(string recvd_data, int client_fd) {
+    if(recvd_data.find("GET / HTTP") != string::npos) {
+      send(client_fd, ack.c_str(), ack.size(),0);
+    } else if(recvd_data.find("GET /echo/") != string :: npos) {
+      int ending_ind = recvd_data.find("HTTP/1.1")-1;
+      string fixed = "GET /echo/";
+      string return_string = recvd_data.substr(fixed.size(),ending_ind - fixed.size());
+      string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                       + to_string(return_string.size()) + "\r\n\r\n" + return_string;
+      ssize_t bytes_sent = 0;
+      while (bytes_sent < response.size()) {
+          ssize_t sent_now = send(client_fd, response.c_str() + bytes_sent, response.size() - bytes_sent, 0);
+          if (sent_now < 0) {
+              perror("Error sending response");
+              break;
+          }
+          bytes_sent += sent_now;
+      }
+    } else {
+      send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
+    }
+}
 int main(int argc, char **argv) {
   // Flush after every cout / cerr
   cout << unitbuf;
@@ -57,19 +83,18 @@ int main(int argc, char **argv) {
   int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
   cout << "Client connected\n";
 
-  string ack = "HTTP/1.1 200 OK\r\n\r\n";
-  string nack_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
-
   char recv_buf[MAXBUFFER];
   ssize_t bytes_recvd = recv(client_fd, recv_buf, MAXBUFFER, 0);
   if(bytes_recvd > 0) {
     string recvd_data(recv_buf, bytes_recvd);
+    cout<<"REQUEST : "<<endl;
     cout<<recvd_data<<endl;
-    if(recvd_data.find("GET / HTTP") != string::npos) {
-      send(client_fd, ack.c_str(), ack.size(),0);
+    if(recvd_data.find("GET") != string::npos) {
+      HandleGet(recvd_data, client_fd);
     } else {
-      send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
+      send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
     }
+
   } else {
     cerr<<"No Data recvd from client"<<endl;
   }
