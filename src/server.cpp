@@ -18,6 +18,72 @@ string ack = "HTTP/1.1 200 OK\r\n\r\n";
 string nack_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
 string nack_bad_request = "HTTP/1.1 400 Bad Request\r\n\r\n";
 
+void send_file_tcp(string recvd_data, int client_fd) {
+  //Will check by default in the Main directory's TestFiles Folder
+      int start_ind = recvd_data.find("/files/")+7;
+      int end_ind = recvd_data.find("HTTP")-1;
+      string file_name = recvd_data.substr(start_ind, end_ind - start_ind);
+      
+      string path_to_dir = "./TestFiles";
+      string file_path = "";
+
+      for(auto iter : filesystem::directory_iterator(path_to_dir)) {
+        string cur_file = iter.path();
+        cur_file = cur_file.substr(path_to_dir.length()+1);
+        cout<<cur_file<<endl;
+        if(cur_file == file_name) {
+          file_path = iter.path();
+        }
+      }
+
+      if(file_path=="") {
+        cout<<"NOT FOUND"<<endl;
+        send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
+        return;
+      }
+
+      ifstream file_data (file_path, ios::binary);
+
+      if (!file_data.is_open()) {
+        std::cerr << "Failed to open file: " << file_path << std::endl;
+        std::string errorResponse = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+        send(client_fd, errorResponse.c_str(), errorResponse.size(), 0);
+        return;
+      }
+
+      size_t file_size = filesystem::file_size(file_path);
+      cout<<"Attempting to read "<<file_path<<" "<<file_size<<endl;
+
+      string response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: "
+                       + to_string(file_size) + "\r\n\r\n";
+      send(client_fd, response_header.c_str(), response_header.size(),0);
+
+      //Socket might not send everything that we have asked it to so we chunk the file into 1024B
+      char data_buffer[MAXBUFFER];
+      while(!file_data.eof()) {
+        file_data.read(data_buffer,MAXBUFFER);
+        //ifstream read will also move pointer ahead after Reading MAXBUFFER bytes. If the data is less
+        //than MAXBUFFER EOF bit gets set automatically. gcount for the number of bytes actually read.
+        size_t bytes_read = file_data.gcount();
+        //useful at the end when the bytes  < MAXBUFFER are read.
+        size_t bytes_sent = 0;
+
+        //Execs until all the read bytes are sent.
+        while(bytes_sent < bytes_read) {
+          size_t bytes_sent_now = send(client_fd, data_buffer + bytes_sent, bytes_read - bytes_sent, 0);  
+          if(bytes_sent_now < 0) {
+            std::cerr << "Error sending data" << std::endl;
+            file_data.close();
+            return;
+          }
+          bytes_sent += bytes_sent_now;
+        }
+      }
+      file_data.close();
+      cout<<"File Transfer Complete!"<<endl;
+}
+
+
 void HandleGet(string recvd_data, int client_fd) {
     if(recvd_data.find("GET / HTTP") != string::npos) {
       send(client_fd, ack.c_str(), ack.size(),0);
@@ -50,70 +116,67 @@ void HandleGet(string recvd_data, int client_fd) {
                        + to_string(return_string.size()) + "\r\n\r\n" + return_string;
       send(client_fd, response.c_str(), response.size(), 0);
     } else if(recvd_data.find("GET /files/") != string::npos) {
-      //Will check by default in the Main directory's TestFiles Folder
-      int start_ind = recvd_data.find("/files/")+7;
-      int end_ind = recvd_data.find("HTTP")-1;
-      string file_name = recvd_data.substr(start_ind, end_ind - start_ind);
-      
-      string path_to_dir = "./TestFiles";
-      string file_path = "";
-
-      for(auto iter : filesystem::directory_iterator(path_to_dir)) {
-        string cur_file = iter.path();
-        cur_file = cur_file.substr(path_to_dir.length()+1);
-        cout<<cur_file<<endl;
-        if(cur_file == file_name) {
-          file_path = iter.path();
-        }
-      }
-
-      if(file_path=="") {
-        cout<<"NOT FOUND"<<endl;
-        send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
-        return;
-      }
-      
-      ifstream file_data (file_path, ios::binary);
-
-      if (!file_data.is_open()) {
-        std::cerr << "Failed to open file: " << file_path << std::endl;
-        std::string errorResponse = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
-        send(client_fd, errorResponse.c_str(), errorResponse.size(), 0);
-        return;
-      }
-
-      size_t file_size = filesystem::file_size(file_path);
-      cout<<"Attempting to read "<<file_path<<" "<<file_size<<endl;
-
-      string response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: "
-                       + to_string(file_size) + "\r\n\r\n";
-      send(client_fd, response_header.c_str(), response_header.size(),0);
-
-      //Socket might not send everything that we have asked it to so we chunk the file into 1024B
-      char data_buffer[MAXBUFFER];
-      while(!file_data.eof()) {
-        file_data.read(data_buffer,MAXBUFFER);
-        size_t bytes_read = file_data.gcount();
-        //useful at the end when the bytes  < MAXBUFFER are read.
-        size_t bytes_sent = 0;
-
-        //Execs until all the read bytes are sent.
-        while(bytes_sent < bytes_read) {
-          size_t bytes_sent_now = send(client_fd, data_buffer + bytes_sent, bytes_read - bytes_sent, 0);  
-          if(bytes_sent_now < 0) {
-            std::cerr << "Error sending data" << std::endl;
-            file_data.close();
-            return;
-          }
-          bytes_sent += bytes_sent_now;
-        }
-      }
-      file_data.close();
-      cout<<"File Transfer Complete!"<<endl;
+      send_file_tcp(recvd_data, client_fd);
     } else {
       send(client_fd, nack_not_found.c_str(), nack_not_found.size(),0);
     }
 }
+
+
+void recv_file_tcp(string recvd_data, int client_fd) {
+  string fixed = "/upload/";
+  int start_ind = recvd_data.find(fixed) + fixed.length();
+  int end_ind = recvd_data.find(" HTTP");
+  string file_name = recvd_data.substr(start_ind, end_ind - start_ind);
+  fixed = "Content-Length: ";
+  start_ind = recvd_data.find(fixed);
+  if(start_ind == string :: npos) {
+    send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
+    return;
+  }
+  start_ind += fixed.length();
+  string cl = "";
+  while(recvd_data[start_ind]!='\r' and recvd_data[start_ind]!='\n') {
+    cl.push_back(recvd_data[start_ind++]);
+  }
+  ssize_t content_length = stoull(cl);
+
+  //File can be created by ofstream automatically.
+  filesystem::create_directories("Uploaded");
+  string file_path = "./Uploaded/"+file_name;
+  ofstream file_data(file_path, ios::binary);
+
+  size_t bytes_recvd = 0;
+
+  char data_buffer[MAXBUFFER];
+  cout<<"Original size : "<<content_length<<endl;
+  while(bytes_recvd < content_length) {
+    size_t bytes_recvd_now = recv(client_fd,data_buffer,MAXBUFFER,0);
+    if(bytes_recvd_now < 0) {
+      cerr<<"Error while recv"<<endl;
+      break;
+    }
+    file_data.write(data_buffer,bytes_recvd_now);
+    bytes_recvd += bytes_recvd_now;
+  }
+  cout<<" Bytes recvd : "<<bytes_recvd<<endl;
+  if(bytes_recvd == content_length) {
+    send(client_fd, ack.c_str(), ack.length(), 0);
+  } else {
+    send(client_fd, nack_bad_request.c_str(), nack_bad_request.length(), 0);
+  }
+  file_data.close();
+}
+void HandlePost(string recvd_data, int client_fd) {
+  if(recvd_data.find("/upload") != string::npos) {
+    cout<<"Testing Endpoint"<<endl;
+    recv_file_tcp(recvd_data, client_fd);
+  } else { 
+    send(client_fd, nack_bad_request.c_str(), nack_not_found.size(), 0);
+  }
+}
+
+
 void HandleConnection(int client_fd) {
     char recv_buf[MAXBUFFER];
     ssize_t bytes_recvd = recv(client_fd, recv_buf, MAXBUFFER, 0);
@@ -123,6 +186,8 @@ void HandleConnection(int client_fd) {
       cout<<recvd_data<<endl;
       if(recvd_data.find("GET") != string::npos) {
         HandleGet(recvd_data, client_fd);
+      } else if(recvd_data.find("POST") != string :: npos) {
+        HandlePost(recvd_data, client_fd);
       } else {
         send(client_fd, nack_bad_request.c_str(), nack_bad_request.size(),0);
       }
@@ -131,6 +196,8 @@ void HandleConnection(int client_fd) {
     }
     close(client_fd);
 }
+
+
 int main(int argc, char **argv) {
   // Flush after every cout / cerr
   cout << unitbuf;
