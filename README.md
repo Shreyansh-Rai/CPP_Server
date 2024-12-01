@@ -1,5 +1,6 @@
 ### This is an implementation of a server in C++ that can connect simultaneously without crashing to multiple clients. It uses a Thread Pool implementation to do this. All of it built from scratch. 
 
+### ./compile_and_run.sh to compile and run 
 ### Just dropping a couple example of what you can check out. you are ofcourse free to look at the server file to see what other endpoints are created!
 
 #### (sleep 3 && printf "GET / HTTP/1.1\r\n\r\n") | nc localhost 4221 & (sleep 3 && printf "GET / HTTP/1.1\r\n\r\n") | nc localhost 4221 & (sleep 3 && printf "GET / HTTP/1.1\r\n\r\n") | nc localhost 4221 & wait
